@@ -19,8 +19,15 @@ void ProcessFrame(uint8 *pInputImg)
 	int nc = OSC_CAM_MAX_IMAGE_WIDTH/2;
 	int siz = sizeof(data.u8TempImage[GRAYSCALE]);
 
+
 	int Shift = 7;
 	short Beta = 2;//the meaning is that in floating point the value of Beta is = 6/(1 << Shift) = 6/128 = 0.0469
+
+	OSC_ERR OscVisDrawBoundingBoxBW(struct OSC_PICTURE *picIn, struct OSC_VIS_REGIONS *regions, uint8 Color);
+
+	struct OSC_PICTURE Pic1;
+	struct OSC_PICTURE Pic2;
+	struct OSC_VIS_REGIONS ImageRegions;
 
 	if(data.ipc.state.nStepCounter == 1)
 	{
@@ -74,6 +81,63 @@ void ProcessFrame(uint8 *pInputImg)
 												  *(p+nc-1) | *(p+nc) | *(p+nc+1);
 			}
 		}
+
+		// wrap image DILATION in pictures struct:
+		Pic1.data = data.u8TempImage[DILATION];
+		Pic1.width = nc;
+		Pic1.height = OSC_CAM_MAX_IMAGE_HEIGHT/2;
+		Pic1.type = OSC_PICTURE_GREYSCALE;
+		// as well as EROSION
+		Pic2.data = data.u8TempImage[EROSION];
+		Pic2.width = nc;
+		Pic2.height = OSC_CAM_MAX_IMAGE_HEIGHT/2;
+		Pic2.type = OSC_PICTURE_BINARY;
+		// have to convert to OSCPICTURE_BINARY which has value 0x01 (and not 0xff)
+		OscVisGrey2BW(&Pic1, &Pic2, 0x00, false);
+
+		OscVisLabelBinary(&Pic2, &ImageRegions);
+		OscVisGetRegionProperties(&ImageRegions);
+
+		// OSCLog
+		// plot bounding boxes both in gray and dilation image
+		Pic2.data = data.u8TempImage[GRAYSCALE];
+		OscVisDrawBoundingBoxBW(&Pic2, &ImageRegions, 255);
+		OscVisDrawBoundingBoxBW(&Pic1, &ImageRegions, 128);
+
 	}
 }
+
+/* Drawing Function for Bounding Boxes. Colored in magenta */
+OSC_ERR OscVisDrawBoundingBoxBW(struct OSC_PICTURE *picIn, struct OSC_VIS_REGIONS *regions, uint8 Color)
+ {
+         uint16 i, o;
+         uint8 *pImg = (uint8*)picIn->data;
+         const uint16 width = picIn->width;
+         for(o = 0; o < regions->noOfObjects; o++)
+         {
+
+                 /* Draw the horizontal lines. */
+                 for (i = regions->objects[o].bboxLeft; i < regions->objects[o].bboxRight; i += 1)
+                 {
+                         pImg[width * regions->objects[o].bboxTop + i]  = Color;
+
+
+                         pImg[width * (regions->objects[o].bboxBottom - 1) + i] = Color;
+
+                 }
+
+                 /* Draw the vertical lines. */
+
+                 for (i = regions->objects[o].bboxTop; i < regions->objects[o].bboxBottom-1; i += 1)
+                 {
+                         pImg[width * i + regions->objects[o].bboxLeft] = Color;
+
+
+                         pImg[width * i + regions->objects[o].bboxRight] = Color;
+
+                }
+        }
+       return SUCCESS;
+}
+
 
